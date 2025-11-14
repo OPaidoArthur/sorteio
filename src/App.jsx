@@ -5,6 +5,7 @@ import digitalHubLogo from './assets/digital-hub-logo.gif'
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ?? 'https://sorteiobackend.onrender.com'
 const SPIN_DURATION = 10000
+const MAX_WINNERS = 5
 
 const STORAGE_KEYS = {
   participants: 'sorteio:participants',
@@ -89,12 +90,66 @@ const RouletteStatus = ({
   )
 }
 
+const AnimatedWheel = ({ items, isSpinning, winners }) => {
+  if (!items.length) {
+    return (
+      <div className="wheel-wrapper">
+        <div className="wheel wheel--empty">Adicione participantes</div>
+      </div>
+    )
+  }
+
+  const angleStep = 360 / items.length
+
+  const winnerLookup = winners.map((name) => name.toLowerCase())
+
+  return (
+    <div className="wheel-wrapper" aria-live="polite">
+      <div
+        className={`wheel ${isSpinning ? 'wheel--spinning' : ''}`}
+        style={{ animationDuration: `${SPIN_DURATION / 1000}s` }}
+      >
+        {items.map((name, index) => {
+          const angle = angleStep * index
+          const isWinner = winnerLookup.includes(name.toLowerCase())
+          return (
+            <div
+              key={`${name}-${index}`}
+              className={`wheel__item ${isWinner ? 'wheel__item--winner' : ''}`}
+              style={{
+                transform: `rotate(${angle}deg) translate(-50%, -120px)`,
+              }}
+            >
+              <span style={{ transform: `rotate(${-angle}deg)` }}>{name}</span>
+            </div>
+          )
+        })}
+      </div>
+      <div className="wheel__pointer" aria-hidden="true" />
+    </div>
+  )
+}
+
+const WinnersPodium = ({ winners }) => {
+  const labels = ['1º lugar', '2º lugar', '3º lugar']
+  return (
+    <div className="podium">
+      {labels.map((label, index) => (
+        <div key={label} className="podium__item">
+          <span>{label}</span>
+          <strong>{winners[index] || 'A definir'}</strong>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function App() {
   const [participants, setParticipants] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [nameInput, setNameInput] = useState('')
   const [myName, setMyName] = useState('')
-  const [winner, setWinner] = useState('')
+  const [winners, setWinners] = useState([])
   const [error, setError] = useState('')
   const [hasHydrated, setHasHydrated] = useState(false)
   const [activeTab, setActiveTab] = useState(TABS.user)
@@ -106,8 +161,9 @@ function App() {
   const [isSpinning, setIsSpinning] = useState(false)
   const [rouletteName, setRouletteName] = useState('')
   const [spinProgress, setSpinProgress] = useState(0)
+  const [winnerCount, setWinnerCount] = useState(1)
 
-  const pendingWinnerRef = useRef('')
+  const pendingWinnersRef = useRef([])
   const spinIntervalRef = useRef(null)
   const spinTimeoutRef = useRef(null)
   const spinProgressRef = useRef(null)
@@ -150,7 +206,12 @@ function App() {
       setParticipants(
         Array.isArray(data.participants) ? data.participants : [],
       )
-      setWinner(data.winner || '')
+      const serverWinners = Array.isArray(data.winners)
+        ? data.winners
+        : data.winner
+          ? [data.winner]
+          : []
+      setWinners(serverWinners)
       setServerError('')
     } catch (err) {
       setServerError('Falha ao sincronizar com o servidor. Tente novamente.')
@@ -164,11 +225,11 @@ function App() {
     clearSpinTimers()
     setIsSpinning(false)
     setSpinProgress(1)
-    if (pendingWinnerRef.current) {
-      setWinner(pendingWinnerRef.current)
+    if (pendingWinnersRef.current?.length) {
+      setWinners(pendingWinnersRef.current)
     }
     setRouletteName('')
-    pendingWinnerRef.current = ''
+    pendingWinnersRef.current = []
     await fetchServerState()
   }, [clearSpinTimers, fetchServerState])
 
@@ -204,6 +265,7 @@ function App() {
   const normalizedMyName = (myName || '').trim().toLowerCase()
   const isAdminName = normalizedMyName === ADMIN_NAME_NORMALIZED
   const isAdmin = activeTab === TABS.admin && isAdminAuthorized
+  const primaryWinner = winners[0] || ''
 
   const isRegistered = useMemo(() => {
     if (!myName) {
@@ -254,23 +316,43 @@ function App() {
   }
 
   const handleDraw = async () => {
-    if (!canDraw || isSpinning) {
+    if (isSpinning) {
+      return
+    }
+
+    if (winnerCount > participants.length) {
+      setServerError(
+        'Reduza o numero de ganhadores ou adicione mais participantes.',
+      )
+      return
+    }
+
+    if (!canDraw) {
       return
     }
 
     setServerError('')
-    pendingWinnerRef.current = ''
+    pendingWinnersRef.current = []
     startRouletteAnimation()
 
     try {
       const response = await fetch(`${API_BASE_URL}/draw`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ count: winnerCount }),
       })
       if (!response.ok) {
         throw new Error('Failed to draw')
       }
       const data = await response.json()
-      pendingWinnerRef.current = data.winner || ''
+      const newWinners = Array.isArray(data.winners)
+        ? data.winners
+        : data.winner
+          ? [data.winner]
+          : []
+      pendingWinnersRef.current = newWinners
     } catch {
       clearSpinTimers()
       setIsSpinning(false)
@@ -285,6 +367,7 @@ function App() {
     setIsSpinning(false)
     setRouletteName('')
     setSpinProgress(0)
+    pendingWinnersRef.current = []
     try {
       const response = await fetch(`${API_BASE_URL}/winner/reset`, {
         method: 'POST',
@@ -293,14 +376,20 @@ function App() {
         throw new Error('Failed to reset winner')
       }
       const data = await response.json()
-      setWinner(data.winner || '')
+      const serverWinners = Array.isArray(data.winners)
+        ? data.winners
+        : data.winner
+          ? [data.winner]
+          : []
+      setWinners(serverWinners)
       await fetchServerState()
     } catch {
       setServerError('Nao foi possivel limpar o resultado.')
     }
   }
 
-  const canDraw = participants.length > 1
+  const canDraw =
+    participants.length >= Math.max(2, winnerCount) && winnerCount >= 1
 
   const startRouletteAnimation = useCallback(() => {
     if (!participants.length) {
@@ -439,8 +528,33 @@ function App() {
               </div>
               <div>
                 <span className="pill">Ultimo sorteado</span>
-                <strong>{winner || '-'}</strong>
+                <strong>{primaryWinner || '-'}</strong>
               </div>
+            </div>
+
+            <div className="winner-count">
+              <label htmlFor="winner-count-select">Número de ganhadores</label>
+              <select
+                id="winner-count-select"
+                value={winnerCount}
+                onChange={(event) =>
+                  setWinnerCount(Math.max(1, Number(event.target.value)))
+                }
+                disabled={isSpinning}
+              >
+                {Array.from({ length: MAX_WINNERS }).map((_, index) => {
+                  const value = index + 1
+                  return (
+                    <option key={value} value={value}>
+                      {value} {value === 1 ? 'pessoa' : 'pessoas'}
+                    </option>
+                  )
+                })}
+              </select>
+              <small>
+                Serão sorteados até {winnerCount}{' '}
+                {winnerCount === 1 ? 'vencedor' : 'vencedores'} únicos.
+              </small>
             </div>
 
             <div className="panel__actions">
@@ -454,7 +568,7 @@ function App() {
               <button
                 className="ghost"
                 onClick={handleReset}
-                disabled={!winner || isSpinning}
+                disabled={!winners.length || isSpinning}
               >
                 Limpar resultado
               </button>
@@ -472,8 +586,15 @@ function App() {
               isSpinning={isSpinning}
               rouletteName={rouletteName}
               spinProgress={spinProgress}
-              winner={winner}
+              winner={primaryWinner}
             />
+
+            <AnimatedWheel
+              items={sortedParticipants}
+              isSpinning={isSpinning}
+              winners={winners}
+            />
+            <WinnersPodium winners={winners} />
           </section>
 
           <ParticipantsSection
@@ -505,12 +626,18 @@ function App() {
               isSpinning={isSpinning}
               rouletteName={rouletteName}
               spinProgress={spinProgress}
-              winner={winner}
+              winner={primaryWinner}
+            />
+            <AnimatedWheel
+              items={sortedParticipants}
+              isSpinning={isSpinning}
+              winners={winners}
             />
             <p className="hint">
               Sempre que o administrador clicar em sortear, a roleta gira por 10
               segundos antes de revelar o vencedor final.
             </p>
+            <WinnersPodium winners={winners} />
           </section>
 
           <ParticipantsSection
@@ -558,11 +685,14 @@ function App() {
         </div>
       )}
 
-      {!myName && hasHydrated && (
+      {!isRegistered && hasHydrated && (
         <div className="overlay">
           <form className="identify" onSubmit={handleRegistration}>
             <h3>Identifique-se</h3>
-            <p>Informe seu nome para entrar automaticamente na lista.</p>
+            <p>
+              O acesso exige que o participante informe o nome e entre na lista
+              compartilhada.
+            </p>
             <label htmlFor="participant-name">Nome completo</label>
             <input
               id="participant-name"

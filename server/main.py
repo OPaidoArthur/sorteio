@@ -21,12 +21,16 @@ class ParticipantPayload(BaseModel):
 
 
 participants: List[str] = []
-current_winner: str = ""
+winners: List[str] = []
+
+
+class DrawPayload(BaseModel):
+    count: int = 1
 
 
 @app.get("/participants")
 def list_participants():
-    return {"participants": participants, "winner": current_winner}
+    return {"participants": participants, "winners": winners}
 
 
 @app.post("/participants", status_code=201)
@@ -41,29 +45,36 @@ def add_participant(payload: ParticipantPayload):
             return {"participants": participants, "winner": current_winner}
 
     participants.append(name)
-    return {"participants": participants, "winner": current_winner}
+    return {"participants": participants, "winners": winners}
 
 
 @app.post("/draw")
-def draw_winner():
-    if len(participants) < 2:
+def draw_winner(payload: DrawPayload):
+    if not participants:
         raise HTTPException(
             status_code=400,
-            detail="Sao necessarios pelo menos dois participantes.",
+            detail="Nao ha participantes para o sorteio.",
         )
 
-    global current_winner
-    current_winner = random.choice(participants)
-    return {"winner": current_winner}
+    count = max(1, payload.count)
+    if count > len(participants):
+        raise HTTPException(
+            status_code=400,
+            detail="Quantidade de ganhadores maior que o numero de participantes.",
+        )
+
+    global winners
+    winners = random.sample(participants, count)
+    return {"winners": winners}
 
 
 @app.post("/winner/reset")
 def reset_winner():
-    global current_winner
-    current_winner = ""
-    return {"winner": current_winner}
+    global winners
+    winners = []
+    return {"winners": winners}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "totalParticipants": len(participants)}
+    return {"status": "ok", "totalParticipants": len(participants), "winners": winners}
