@@ -546,3 +546,34 @@
 .participant-name__badge {
   font-size: 1rem;
 }
+.lights {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+}
+
+.lights__dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  opacity: 0.35;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.05);
+}
+
+.lights__dot--red {
+  background: #ff5b5b;
+}
+
+.lights__dot--yellow {
+  background: #f7c948;
+}
+
+.lights__dot--green {
+  background: #52c41a;
+}
+
+.lights__dot--active {
+  opacity: 1;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.15);
+}

@@ -81,12 +81,12 @@ const RaceStatus = ({ isRacing, winners, raceProgress, accent = false }) => {
 
   return (
     <div className={classes.join(' ')}>
-      <p>{statusText}</p>
-      <strong>
-        {isRacing
-          ? `${Math.round(raceProgress * 100)}% concluída`
-          : winners.join(', ') || 'Aguardando corrida'}
-      </strong>
+      <p>{isRacing ? 'Semáforo de largada' : statusText}</p>
+      {isRacing ? (
+        <StartingLights progress={raceProgress} />
+      ) : (
+        <strong>{winners.join(', ') || 'Aguardando corrida'}</strong>
+      )}
     </div>
   )
 }
@@ -127,6 +127,30 @@ const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
               </div>
             </div>
           </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const StartingLights = ({ progress }) => {
+  const phases = [
+    { color: 'red', threshold: 0.33 },
+    { color: 'yellow', threshold: 0.66 },
+    { color: 'green', threshold: 1 },
+  ]
+
+  return (
+    <div className="lights">
+      {phases.map(({ color, threshold }) => {
+        const active = progress >= threshold
+        return (
+          <span
+            key={color}
+            className={`lights__dot lights__dot--${color} ${
+              active ? 'lights__dot--active' : ''
+            }`}
+          />
         )
       })}
     </div>
@@ -688,7 +712,7 @@ function App() {
               winners={winners}
               raceProgress={raceProgress}
             />
-            <WinnersPodium winners={winners} />
+            {!isRacing && <WinnersPodium winners={winners} />}
           </section>
 
           <ParticipantsSection
@@ -738,7 +762,7 @@ function App() {
                 </span>
               )}
             </p>
-            <WinnersPodium winners={winners} />
+            {!isRacing && <WinnersPodium winners={winners} />}
           </section>
 
           <ParticipantsSection
