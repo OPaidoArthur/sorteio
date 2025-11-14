@@ -445,8 +445,8 @@ function App() {
         <div className="hero__brand">
           <img src={digitalHubLogo} alt="Logo animado da Digital Hub" />
           <div>
-            <span>Responsavel pelo site</span>
-            <strong>Digital Hub</strong>
+            <span>Equipe - </span>
+            <strong>Digital Hub P&C</strong>
           </div>
         </div>
         <div>
@@ -454,8 +454,7 @@ function App() {
           <h1>Sala de Sorteios</h1>
         </div>
         <p>
-          Cadastre-se para participar e utilize as abas abaixo para alternar entre
-          a visao do participante e o painel do administrador. Toda a experiencia
+          Cadastre-se para participar. Toda a experiencia
           e operada pela equipe Digital Hub.
         </p>
       </header>
@@ -576,7 +575,7 @@ function App() {
           <ParticipantsSection
             items={sortedParticipants}
             title="Lista de nomes"
-            subtitle="Visualize todos os participantes armazenados no servidor."
+            subtitle="Visualize todos os participantes."
             emptyMessage="Nenhum participante cadastrado ate agora."
           />
         </>
