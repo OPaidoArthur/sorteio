@@ -46,6 +46,31 @@
   box-shadow: 0 20px 60px rgba(23, 70, 161, 0.3);
 }
 
+.hero__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 10px 16px;
+  border-radius: 999px;
+  align-self: flex-start;
+}
+
+.hero__brand img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+.hero__brand span {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.8;
+}
+
 .hero h1 {
   margin: 8px 0 0;
   font-size: 2.6rem;
@@ -267,6 +292,13 @@
 .identify input:focus {
   outline: 2px solid #1f74ff;
   border-color: transparent;
+}
+
+.admin-access__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
 }
 
 .error {

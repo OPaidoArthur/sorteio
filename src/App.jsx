@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import digitalHubLogo from './assets/digital-hub-logo.gif'
 
 const STORAGE_KEYS = {
   participants: 'sorteio:participants',
@@ -10,6 +11,13 @@ const TABS = {
   user: 'user',
   admin: 'admin',
 }
+
+const ADMIN_RULES = {
+  name: 'Elizomar',
+  password: '@5759#*',
+}
+
+const ADMIN_NAME_NORMALIZED = ADMIN_RULES.name.toLowerCase()
 
 const loadParticipants = () => {
   if (typeof window === 'undefined') {
@@ -64,6 +72,10 @@ function App() {
   const [error, setError] = useState('')
   const [hasHydrated, setHasHydrated] = useState(false)
   const [activeTab, setActiveTab] = useState(TABS.user)
+  const [isAdminAuthorized, setIsAdminAuthorized] = useState(false)
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false)
+  const [adminPassword, setAdminPassword] = useState('')
+  const [adminError, setAdminError] = useState('')
 
   useEffect(() => {
     const storedParticipants = loadParticipants()
@@ -90,9 +102,53 @@ function App() {
     )
   }, [participants, hasHydrated])
 
+  useEffect(() => {
+    if (!hasHydrated || typeof window === 'undefined') {
+      return
+    }
+
+    const handleStorage = (event) => {
+      if (event.key === STORAGE_KEYS.participants) {
+        if (!event.newValue) {
+          setParticipants([])
+          return
+        }
+
+        try {
+          const parsed = JSON.parse(event.newValue)
+          if (Array.isArray(parsed)) {
+            setParticipants(parsed)
+          }
+        } catch {
+          // ignore malformed payloads
+        }
+      }
+    }
+
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [hasHydrated])
+
+  useEffect(() => {
+    const normalized = (myName || '').trim().toLowerCase()
+    if (!normalized || normalized !== ADMIN_NAME_NORMALIZED) {
+      setIsAdminAuthorized(false)
+    }
+  }, [myName])
+
+  useEffect(() => {
+    if (!isAdminAuthorized && activeTab === TABS.admin) {
+      setActiveTab(TABS.user)
+    }
+  }, [isAdminAuthorized, activeTab])
+
   const sortedParticipants = useMemo(() => {
     return [...participants].sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }, [participants])
+
+  const normalizedMyName = (myName || '').trim().toLowerCase()
+  const isAdminName = normalizedMyName === ADMIN_NAME_NORMALIZED
+  const isAdmin = activeTab === TABS.admin && isAdminAuthorized
 
   const isRegistered = useMemo(() => {
     if (!myName) {
@@ -146,18 +202,61 @@ function App() {
   }
 
   const canDraw = participants.length > 1
-  const isAdmin = activeTab === TABS.admin
+
+  const closeAdminPrompt = () => {
+    setShowAdminPrompt(false)
+    setAdminPassword('')
+    setAdminError('')
+  }
+
+  const handleAdminUnlock = (event) => {
+    event.preventDefault()
+
+    if (!isAdminName) {
+      setAdminError('Apenas Elizomar pode acessar este painel.')
+      return
+    }
+
+    if (adminPassword !== ADMIN_RULES.password) {
+      setAdminError('Senha incorreta. Tente novamente.')
+      return
+    }
+
+    setIsAdminAuthorized(true)
+    setActiveTab(TABS.admin)
+    setShowAdminPrompt(false)
+    setAdminPassword('')
+    setAdminError('')
+  }
+
+  const handleAdminTabClick = () => {
+    if (isAdminAuthorized) {
+      setActiveTab(TABS.admin)
+      return
+    }
+
+    setAdminError('')
+    setShowAdminPrompt(true)
+  }
 
   return (
     <div className="app">
       <header className="hero">
+        <div className="hero__brand">
+          <img src={digitalHubLogo} alt="Logo animado da Digital Hub" />
+          <div>
+            <span>Um produto Digital Hub P&C</span>
+            <strong>Digital Hub</strong>
+          </div>
+        </div>
         <div>
           <p className="hero__eyebrow">Aplicativo de Sorteio Online</p>
           <h1>Sala de Sorteios</h1>
         </div>
         <p>
           Cadastre-se para participar e utilize as abas abaixo para alternar entre
-          a visao do participante e o painel do administrador.
+          a visao do participante e o painel do administrador. Toda a experiência
+          é operada pela equipe Digital Hub.
         </p>
       </header>
 
@@ -176,7 +275,7 @@ function App() {
           role="tab"
           aria-selected={activeTab === TABS.admin}
           className={`tab ${activeTab === TABS.admin ? 'tab--active' : ''}`}
-          onClick={() => setActiveTab(TABS.admin)}
+          onClick={handleAdminTabClick}
         >
           Painel do administrador
         </button>
@@ -257,6 +356,42 @@ function App() {
             emptyMessage="Nenhum participante cadastrado ate agora."
           />
         </>
+      )}
+
+      {showAdminPrompt && (
+        <div className="overlay">
+          {isAdminName ? (
+            <form className="identify admin-access" onSubmit={handleAdminUnlock}>
+              <h3>Acesso restrito</h3>
+              <p>Digite a senha de segurança para abrir o painel do administrador.</p>
+              <label htmlFor="admin-password">Senha</label>
+              <input
+                id="admin-password"
+                type="password"
+                value={adminPassword}
+                placeholder="••••••"
+                onChange={(event) => setAdminPassword(event.target.value)}
+              />
+              {adminError && <span className="error">{adminError}</span>}
+              <div className="admin-access__actions">
+                <button type="button" className="ghost" onClick={closeAdminPrompt}>
+                  Cancelar
+                </button>
+                <button type="submit" className="primary">
+                  Liberar painel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="identify admin-access" role="dialog" aria-live="assertive">
+              <h3>Acesso exclusivo</h3>
+              <p>Apenas Elizomar consegue abrir o painel do administrador.</p>
+              <button type="button" className="primary" onClick={closeAdminPrompt}>
+                Entendi
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {!myName && hasHydrated && (
