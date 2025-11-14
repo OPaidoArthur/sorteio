@@ -732,6 +732,11 @@ function App() {
             <p className="hint">
               Sempre que o administrador clicar em sortear, uma corrida de 10
               segundos acontece e define o pódio automaticamente.
+              {isRacing && (
+                <span className="hint__inline">
+                  Aguarde os 10 segundos para revelar os vencedores.
+                </span>
+              )}
             </p>
             <WinnersPodium winners={winners} />
           </section>

@@ -445,6 +445,11 @@
   font-size: 0.9rem;
 }
 
+.hint__inline {
+  display: block;
+  margin-top: 4px;
+}
+
 .overlay {
   position: fixed;
   inset: 0;
