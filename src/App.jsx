@@ -64,7 +64,14 @@ const ParticipantsSection = ({
 const RACE_START = 0.04
 const RACE_PRE_FINISH = 0.9
 
-const RaceStatus = ({ isRacing, winners, raceProgress, accent = false }) => {
+const RaceStatus = ({
+  isRacing,
+  winners,
+  raceProgress,
+  accent = false,
+  showCountdown = false,
+  countdownValue = 0,
+}) => {
   const classes = ['panel__result']
   if (accent) {
     classes.push('panel__result--accent')
@@ -83,7 +90,7 @@ const RaceStatus = ({ isRacing, winners, raceProgress, accent = false }) => {
     <div className={classes.join(' ')}>
       <p>{isRacing ? 'Semáforo de largada' : statusText}</p>
       {isRacing ? (
-        <StartingLights progress={raceProgress} />
+        <StartingLights progress={raceProgress} countdownValue={countdownValue} />
       ) : (
         <strong>{winners.join(', ') || 'Aguardando corrida'}</strong>
       )}
@@ -91,7 +98,13 @@ const RaceStatus = ({ isRacing, winners, raceProgress, accent = false }) => {
   )
 }
 
-const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
+const RacingTrack = ({
+  racers,
+  winners,
+  isRacing,
+  raceProgress,
+  countdownValue,
+}) => {
   if (!racers.length) {
     return <div className="track track--empty">Cadastre participantes</div>
   }
@@ -99,8 +112,11 @@ const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
   const winnerLookup = winners.map((name) => name.toLowerCase())
   const hasResults = winners.length > 0
 
+  const effectiveProgress =
+    countdownValue > 0 ? Math.min(raceProgress, countdownValue / SPIN_DURATION) : raceProgress
+
   return (
-    <div className="track" role="list">
+    <div className="track" role="list" aria-live="polite">
       {racers.map((name, index) => {
         const normalized = name.toLowerCase()
         const isWinner = winnerLookup.includes(normalized)
@@ -109,7 +125,7 @@ const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
         if (isRacing) {
           position =
             RACE_START +
-            raceProgress * (RACE_PRE_FINISH - RACE_START)
+            effectiveProgress * (RACE_PRE_FINISH - RACE_START)
         } else if (hasResults) {
           position = isWinner ? 1 : RACE_PRE_FINISH
         }
@@ -133,7 +149,9 @@ const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
   )
 }
 
-const StartingLights = ({ progress }) => {
+const StartingLights = ({ progress, countdownValue = 0 }) => {
+  const progressValue =
+    countdownValue > 0 ? countdownValue / SPIN_DURATION : progress
   const phases = [
     { color: 'red', threshold: 0.33 },
     { color: 'yellow', threshold: 0.66 },
@@ -141,9 +159,9 @@ const StartingLights = ({ progress }) => {
   ]
 
   return (
-    <div className="lights">
+    <div className="lights" aria-live="assertive">
       {phases.map(({ color, threshold }) => {
-        const active = progress >= threshold
+        const active = progressValue >= threshold
         return (
           <span
             key={color}
@@ -186,6 +204,7 @@ function App() {
   const [adminError, setAdminError] = useState('')
   const [serverError, setServerError] = useState('')
   const [isRacing, setIsRacing] = useState(false)
+  const [countdownValue, setCountdownValue] = useState(0)
   const [raceProgress, setRaceProgress] = useState(0)
   const [winnerCount, setWinnerCount] = useState(1)
   const [authorizedAdminName, setAuthorizedAdminName] = useState('')
@@ -247,6 +266,7 @@ function App() {
     clearRaceTimers()
     setIsRacing(false)
     setRaceProgress(1)
+    setCountdownValue(SPIN_DURATION)
     if (pendingWinnersRef.current?.length) {
       setWinners(pendingWinnersRef.current)
     }
@@ -457,6 +477,7 @@ function App() {
 
     raceStartRef.current = Date.now()
     setIsRacing(true)
+    setCountdownValue(0)
     setRaceProgress(0)
 
     const step = () => {
@@ -465,6 +486,7 @@ function App() {
       }
       const elapsed = Date.now() - raceStartRef.current
       const progress = Math.min(elapsed / SPIN_DURATION, 1)
+      setCountdownValue(elapsed)
       setRaceProgress(progress)
       if (progress < 1) {
         raceProgressRef.current = requestAnimationFrame(step)
@@ -704,6 +726,7 @@ function App() {
               isRacing={isRacing}
               winners={winners}
               raceProgress={raceProgress}
+              countdownValue={countdownValue}
             />
 
             <RacingTrack
@@ -711,6 +734,7 @@ function App() {
               isRacing={isRacing}
               winners={winners}
               raceProgress={raceProgress}
+              countdownValue={countdownValue}
             />
             {!isRacing && <WinnersPodium winners={winners} />}
           </section>
@@ -746,12 +770,14 @@ function App() {
               isRacing={isRacing}
               winners={winners}
               raceProgress={raceProgress}
+              countdownValue={countdownValue}
             />
             <RacingTrack
               racers={sortedParticipants}
               isRacing={isRacing}
               winners={winners}
               raceProgress={raceProgress}
+              countdownValue={countdownValue}
             />
             <p className="hint">
               Sempre que o administrador clicar em sortear, uma corrida de 10
