@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import digitalHubLogo from './assets/digital-hub-logo.gif'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ?? 'https://sorteiobackend.onrender.com'
 const SPIN_DURATION = 10000
 
 const STORAGE_KEYS = {
