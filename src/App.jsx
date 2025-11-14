@@ -611,10 +611,12 @@ function App() {
                 <span className="pill">Cadastrados</span>
                 <strong>{participants.length}</strong>
               </div>
-              <div>
-                <span className="pill">Ultimo sorteado</span>
-                <strong>{primaryWinner || '-'}</strong>
-              </div>
+              {!isRacing && (
+                <div>
+                  <span className="pill">Ultimo sorteado</span>
+                  <strong>{primaryWinner || '-'}</strong>
+                </div>
+              )}
             </div>
 
             <div className="winner-count">
