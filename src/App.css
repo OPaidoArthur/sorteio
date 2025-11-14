@@ -198,7 +198,7 @@
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  transition: left 0.3s ease;
+  transition: left 0.35s ease;
   font-size: 1.3rem;
 }
 
@@ -206,17 +206,46 @@
   filter: drop-shadow(0 5px 8px rgba(255, 122, 122, 0.4));
 }
 
+.track__car-icon {
+  display: inline-block;
+  width: 32px;
+  height: 16px;
+  background: linear-gradient(90deg, #ff7a7a, #ffce7a);
+  border-radius: 8px;
+  position: relative;
+}
+
+.track__car-icon::before,
+.track__car-icon::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1f2a56;
+}
+
+.track__car-icon::before {
+  left: 4px;
+}
+
+.track__car-icon::after {
+  right: 4px;
+}
+
 .track__finish {
   position: absolute;
   top: 0;
-  right: 0;
+  right: 12px;
   bottom: 0;
-  width: 36px;
+  width: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: 1rem;
   color: #ff7a7a;
+  pointer-events: none;
 }
 
 .podium {

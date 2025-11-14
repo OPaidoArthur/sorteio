@@ -109,19 +109,17 @@ const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
           <div className="track__lane" key={`${name}-${index}`} role="listitem">
             <span className="track__label">{name}</span>
             <div className="track__road">
+              <div className="track__finish">🏁</div>
               <div
                 className={`track__car ${isWinner ? 'track__car--winner' : ''}`}
                 style={{ left: `${position * 100}%` }}
               >
-                <span role="img" aria-label="carro de corrida">
-                  🏎️
-                </span>
+                <span className="track__car-icon" aria-label="carro de corrida" />
               </div>
             </div>
           </div>
         )
       })}
-      <div className="track__finish">🏁</div>
     </div>
   )
 }
