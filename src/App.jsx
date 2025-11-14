@@ -29,6 +29,8 @@ const ParticipantsSection = ({
   title,
   subtitle,
   emptyMessage,
+  onRemove,
+  allowRemove = false,
 }) => (
   <section className="participants">
     <div className="participants__header">
@@ -41,9 +43,12 @@ const ParticipantsSection = ({
     {items.length ? (
       <ul>
         {items.map((participant) => (
-          <li key={participant}>
-            <span>{participant}</span>
-          </li>
+          <ParticipantRow
+            key={participant}
+            name={participant}
+            allowRemove={allowRemove}
+            onRemove={onRemove}
+          />
         ))}
       </ul>
     ) : (
@@ -403,6 +408,32 @@ function App() {
     }, SPIN_DURATION)
   }, [participants, finalizeRace])
 
+  const handleRemoveParticipant = async (name) => {
+    if (!isAdmin) {
+      return
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/participants/${encodeURIComponent(name)}`,
+        {
+          method: 'DELETE',
+        },
+      )
+      if (!response.ok) {
+        throw new Error('Failed to remove participant')
+      }
+      const data = await response.json()
+      setParticipants(
+        Array.isArray(data.participants) ? data.participants : [],
+      )
+      const updatedWinners = Array.isArray(data.winners) ? data.winners : []
+      setWinners(updatedWinners)
+    } catch {
+      setServerError('Nao foi possivel remover este participante.')
+    }
+  }
+
   const closeAdminPrompt = () => {
     setShowAdminPrompt(false)
     setAdminPassword('')
@@ -577,6 +608,8 @@ function App() {
             title="Lista de nomes"
             subtitle="Visualize todos os participantes."
             emptyMessage="Nenhum participante cadastrado ate agora."
+            allowRemove
+            onRemove={handleRemoveParticipant}
           />
         </>
       ) : (
@@ -620,6 +653,8 @@ function App() {
             title="Participantes conectados"
             subtitle="Esta lista mostra quem se cadastrou na plataforma compartilhada."
             emptyMessage="Nenhum participante cadastrado ate agora."
+            allowRemove={isAdmin}
+            onRemove={handleRemoveParticipant}
           />
         </>
       )}
@@ -691,5 +726,17 @@ function App() {
 export default App
 
 
-
-
+const ParticipantRow = ({ name, allowRemove, onRemove }) => (
+  <li>
+    <span>{name}</span>
+    {allowRemove && (
+      <button
+        type="button"
+        className="link-button"
+        onClick={() => onRemove?.(name)}
+      >
+        Remover
+      </button>
+    )}
+  </li>
+)

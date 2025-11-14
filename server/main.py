@@ -42,7 +42,7 @@ def add_participant(payload: ParticipantPayload):
     normalized = name.lower()
     for registered in participants:
         if registered.lower() == normalized:
-            return {"participants": participants, "winner": current_winner}
+            return {"participants": participants, "winners": winners}
 
     participants.append(name)
     return {"participants": participants, "winners": winners}
@@ -78,3 +78,29 @@ def reset_winner():
 @app.get("/health")
 def health_check():
     return {"status": "ok", "totalParticipants": len(participants), "winners": winners}
+
+
+@app.delete("/participants/{name}")
+def delete_participant(name: str):
+    normalized = name.strip().lower()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Nome invalido.")
+
+    global winners
+    removed = False
+    remaining = []
+    for participant in participants:
+        if participant.lower() == normalized and not removed:
+            removed = True
+            continue
+        remaining.append(participant)
+
+    if not removed:
+        raise HTTPException(status_code=404, detail="Participante nao encontrado.")
+
+    participants.clear()
+    participants.extend(remaining)
+
+    winners = [w for w in winners if w.lower() != normalized]
+
+    return {"participants": participants, "winners": winners}
