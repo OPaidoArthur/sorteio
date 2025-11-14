@@ -532,3 +532,12 @@
     border-radius: 16px;
   }
 }
+.participant-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.participant-name__badge {
+  font-size: 1rem;
+}

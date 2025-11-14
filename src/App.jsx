@@ -17,12 +17,16 @@ const TABS = {
   admin: 'admin',
 }
 
-const ADMIN_RULES = {
-  name: 'Elizomar',
-  password: '@5759#*',
-}
+const ADMIN_RULES = [
+  { name: 'Elizomar', password: '@5759#*', participates: true },
+  { name: 'Hub-Zero', password: '@007#*', participates: false },
+]
 
-const ADMIN_NAME_NORMALIZED = ADMIN_RULES.name.toLowerCase()
+const normalizeName = (value = '') => value.trim().toLowerCase()
+const findAdminByName = (value = '') => {
+  const normalized = normalizeName(value)
+  return ADMIN_RULES.find((admin) => admin.name.toLowerCase() === normalized)
+}
 
 const ParticipantsSection = ({
   items,
@@ -160,6 +164,7 @@ function App() {
   const [isRacing, setIsRacing] = useState(false)
   const [raceProgress, setRaceProgress] = useState(0)
   const [winnerCount, setWinnerCount] = useState(1)
+  const [authorizedAdminName, setAuthorizedAdminName] = useState('')
 
   const pendingWinnersRef = useRef([])
   const raceTimeoutRef = useRef(null)
@@ -238,11 +243,19 @@ function App() {
   }, [fetchServerState])
 
   useEffect(() => {
-    const normalized = (myName || '').trim().toLowerCase()
-    if (!normalized || normalized !== ADMIN_NAME_NORMALIZED) {
+    if (!currentAdminDefinition) {
+      setIsAdminAuthorized(false)
+      setAuthorizedAdminName('')
+      return
+    }
+
+    if (
+      authorizedAdminName &&
+      authorizedAdminName !== currentAdminDefinition.name
+    ) {
       setIsAdminAuthorized(false)
     }
-  }, [myName])
+  }, [currentAdminDefinition, authorizedAdminName])
 
   useEffect(() => {
     if (!isAdminAuthorized && activeTab === TABS.admin) {
@@ -254,9 +267,19 @@ function App() {
     return [...participants].sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }, [participants])
 
-  const normalizedMyName = (myName || '').trim().toLowerCase()
-  const isAdminName = normalizedMyName === ADMIN_NAME_NORMALIZED
-  const isAdmin = activeTab === TABS.admin && isAdminAuthorized
+  const normalizedMyName = normalizeName(myName || '')
+  const currentAdminDefinition = useMemo(
+    () => findAdminByName(normalizedMyName),
+    [normalizedMyName],
+  )
+  const isAdminName = Boolean(currentAdminDefinition)
+  const isAdminSpectator =
+    currentAdminDefinition && !currentAdminDefinition.participates
+  const isAdmin =
+    activeTab === TABS.admin &&
+    isAdminAuthorized &&
+    currentAdminDefinition &&
+    authorizedAdminName === currentAdminDefinition.name
   const primaryWinner = winners[0] || ''
 
   const isRegistered = useMemo(() => {
@@ -264,10 +287,14 @@ function App() {
       return false
     }
 
+    if (isAdminSpectator) {
+      return true
+    }
+
     return participants.some(
       (name) => name.toLowerCase() === myName.toLowerCase(),
     )
-  }, [participants, myName])
+  }, [participants, myName, isAdminSpectator])
 
   const handleRegistration = async (event) => {
     event.preventDefault()
@@ -276,6 +303,23 @@ function App() {
     if (!normalized) {
       setError('Informe um nome valido.')
       return
+    }
+
+    const adminInfo = findAdminByName(normalized)
+    if (adminInfo) {
+      setError('')
+      const canonicalName = adminInfo.name
+      setMyName(canonicalName)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEYS.myName, canonicalName)
+      }
+
+      if (adminInfo.participates) {
+        // continue registering below
+      } else {
+        await fetchServerState()
+        return
+      }
     }
 
     try {
@@ -296,9 +340,10 @@ function App() {
         Array.isArray(data.participants) ? data.participants : [],
       )
       setError('')
-      setMyName(normalized)
+      const storedName = adminInfo?.name || normalized
+      setMyName(storedName)
       if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_KEYS.myName, normalized)
+        localStorage.setItem(STORAGE_KEYS.myName, storedName)
       }
 
       await fetchServerState()
@@ -435,7 +480,7 @@ function App() {
   }
 
   const handleClearNonAdmins = async () => {
-    if (!isAdmin) {
+    if (!isAdmin || !currentAdminDefinition) {
       return
     }
 
@@ -452,7 +497,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ admin_name: ADMIN_RULES.name }),
+        body: JSON.stringify({ admin_name: currentAdminDefinition.name }),
       })
       if (!response.ok) {
         throw new Error('Failed to purge participants')
@@ -476,17 +521,18 @@ function App() {
   const handleAdminUnlock = (event) => {
     event.preventDefault()
 
-    if (!isAdminName) {
-      setAdminError('Apenas Elizomar pode acessar este painel.')
+    if (!currentAdminDefinition) {
+      setAdminError('Apenas administradores podem acessar este painel.')
       return
     }
 
-    if (adminPassword !== ADMIN_RULES.password) {
+    if (adminPassword !== currentAdminDefinition.password) {
       setAdminError('Senha incorreta. Tente novamente.')
       return
     }
 
     setIsAdminAuthorized(true)
+    setAuthorizedAdminName(currentAdminDefinition.name)
     setActiveTab(TABS.admin)
     setShowAdminPrompt(false)
     setAdminPassword('')
@@ -726,7 +772,7 @@ function App() {
           ) : (
             <div className="identify admin-access" role="dialog" aria-live="assertive">
               <h3>Acesso exclusivo</h3>
-              <p>Apenas Elizomar consegue abrir o painel do administrador.</p>
+              <p>Apenas administradores conseguem abrir o painel do administrador.</p>
               <button type="button" className="primary" onClick={closeAdminPrompt}>
                 Entendi
               </button>
@@ -766,17 +812,24 @@ function App() {
 export default App
 
 
-const ParticipantRow = ({ name, allowRemove, onRemove }) => (
-  <li>
-    <span>{name}</span>
-    {allowRemove && (
-      <button
-        type="button"
-        className="link-button"
-        onClick={() => onRemove?.(name)}
-      >
-        Remover
-      </button>
-    )}
-  </li>
-)
+const ParticipantRow = ({ name, allowRemove, onRemove }) => {
+  const adminInfo = findAdminByName(name)
+
+  return (
+    <li>
+      <span className="participant-name">
+        {adminInfo && <span className="participant-name__badge">👑</span>}
+        {name}
+      </span>
+      {allowRemove && (
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => onRemove?.(name)}
+        >
+          Remover
+        </button>
+      )}
+    </li>
+  )
+}
