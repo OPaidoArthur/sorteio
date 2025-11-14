@@ -259,6 +259,31 @@
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
 }
 
+.wheel__multi-pointers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.wheel__pointer--secondary {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  top: 12px;
+  left: calc(50% - 16px);
+}
+
+.wheel__pointer--secondary span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffb347;
+  font-size: 1.5rem;
+  transform: rotate(-90deg);
+}
+
 @keyframes wheel-spin {
   from {
     transform: rotate(0deg);

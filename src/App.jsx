@@ -102,6 +102,18 @@ const AnimatedWheel = ({ items, isSpinning, winners }) => {
   const angleStep = 360 / items.length
 
   const winnerLookup = winners.map((name) => name.toLowerCase())
+  const winnerAngles = new Map()
+
+  if (!isSpinning && winners.length) {
+    winners.forEach((winnerName) => {
+      const index = items.findIndex(
+        (name) => name.toLowerCase() === winnerName.toLowerCase(),
+      )
+      if (index >= 0) {
+        winnerAngles.set(winnerName.toLowerCase(), angleStep * index)
+      }
+    })
+  }
 
   return (
     <div className="wheel-wrapper" aria-live="polite">
@@ -126,6 +138,21 @@ const AnimatedWheel = ({ items, isSpinning, winners }) => {
         })}
       </div>
       <div className="wheel__pointer" aria-hidden="true" />
+      {!isSpinning && winners.length > 1 && (
+        <div className="wheel__multi-pointers">
+          {[...winnerAngles.entries()].map(([key, angle]) => (
+            <div
+              key={key}
+              className="wheel__pointer wheel__pointer--secondary"
+              style={{
+                transform: `translate(-50%, -20px) rotate(${angle}deg)`,
+              }}
+            >
+              <span>★</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
