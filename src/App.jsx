@@ -52,107 +52,70 @@ const ParticipantsSection = ({
   </section>
 )
 
-const RouletteStatus = ({
-  isSpinning,
-  rouletteName,
-  spinProgress,
-  winner,
-  accent = false,
-}) => {
+const RaceStatus = ({ isRacing, winners, raceProgress, accent = false }) => {
   const classes = ['panel__result']
   if (accent) {
     classes.push('panel__result--accent')
   }
-  if (isSpinning) {
+  if (isRacing) {
     classes.push('panel__result--spinning')
   }
 
+  const statusText = isRacing
+    ? 'Corrida em andamento'
+    : winners.length
+      ? 'Campeões da última corrida'
+      : 'Nenhum resultado ainda'
+
   return (
     <div className={classes.join(' ')}>
-      <p>{isSpinning ? 'Roleta em andamento (10s)' : 'Resultado atual'}</p>
+      <p>{statusText}</p>
       <strong>
-        {isSpinning
-          ? rouletteName || 'Embaralhando nomes...'
-          : winner || 'Nenhum sorteio realizado'}
+        {isRacing
+          ? `${Math.round(raceProgress * 100)}% concluída`
+          : winners.join(', ') || 'Aguardando corrida'}
       </strong>
-      {isSpinning && (
-        <div className="roulette">
-          <div className="roulette__track">
-            <div
-              className="roulette__indicator"
-              style={{ width: `${Math.min(spinProgress * 100, 100)}%` }}
-            />
-          </div>
-          <span>{Math.round(spinProgress * 100)}%</span>
-        </div>
-      )}
     </div>
   )
 }
 
-const AnimatedWheel = ({ items, isSpinning, winners }) => {
-  if (!items.length) {
-    return (
-      <div className="wheel-wrapper">
-        <div className="wheel wheel--empty">Adicione participantes</div>
-      </div>
-    )
+const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
+  if (!racers.length) {
+    return <div className="track track--empty">Cadastre participantes</div>
   }
-
-  const angleStep = 360 / items.length
 
   const winnerLookup = winners.map((name) => name.toLowerCase())
-  const winnerAngles = new Map()
-
-  if (!isSpinning && winners.length) {
-    winners.forEach((winnerName) => {
-      const index = items.findIndex(
-        (name) => name.toLowerCase() === winnerName.toLowerCase(),
-      )
-      if (index >= 0) {
-        winnerAngles.set(winnerName.toLowerCase(), angleStep * index)
-      }
-    })
-  }
+  const total = racers.length
 
   return (
-    <div className="wheel-wrapper" aria-live="polite">
-      <div
-        className={`wheel ${isSpinning ? 'wheel--spinning' : ''}`}
-        style={{ animationDuration: `${SPIN_DURATION / 1000}s` }}
-      >
-        {items.map((name, index) => {
-          const angle = angleStep * index
-          const isWinner = winnerLookup.includes(name.toLowerCase())
-          return (
-            <div
-              key={`${name}-${index}`}
-              className={`wheel__item ${isWinner ? 'wheel__item--winner' : ''}`}
-              style={{
-                transform: `rotate(${angle}deg) translate(-50%, -120px)`,
-              }}
-            >
-              <span style={{ transform: `rotate(${-angle}deg)` }}>{name}</span>
+    <div className="track" role="list">
+      {racers.map((name, index) => {
+        const normalized = name.toLowerCase()
+        const base = index / total
+        const isWinner = winnerLookup.includes(normalized)
+        const progress = isRacing
+          ? Math.min(base + raceProgress * (1 - base), 1)
+          : isWinner
+            ? 1
+            : base * 0.2
+
+        return (
+          <div className="track__lane" key={`${name}-${index}`} role="listitem">
+            <span className="track__label">{name}</span>
+            <div className="track__road">
+              <div
+                className={`track__car ${isWinner ? 'track__car--winner' : ''}`}
+                style={{ left: `${progress * 100}%` }}
+              >
+                <span role="img" aria-label="carro de corrida">
+                  🏎️
+                </span>
+              </div>
             </div>
-          )
-        })}
-      </div>
-      <div className="wheel__pointer" aria-hidden="true" />
-      {!isSpinning && winners.length > 1 && (
-        <div className="wheel__multi-pointers">
-          {[...winnerAngles.entries()].map(([key, angle]) => (
-            <div
-              key={key}
-              className="wheel__pointer wheel__pointer--secondary"
-              style={{
-                transform: `translate(-50%, -20px) rotate(${angle}deg)`,
-              }}
-            >
-              <span>★</span>
-            </div>
-          ))}
-        </div>
-      )}
+          </div>
+        )
+      })}
+      <div className="track__finish">🏁</div>
     </div>
   )
 }
@@ -185,16 +148,14 @@ function App() {
   const [adminPassword, setAdminPassword] = useState('')
   const [adminError, setAdminError] = useState('')
   const [serverError, setServerError] = useState('')
-  const [isSpinning, setIsSpinning] = useState(false)
-  const [rouletteName, setRouletteName] = useState('')
-  const [spinProgress, setSpinProgress] = useState(0)
+  const [isRacing, setIsRacing] = useState(false)
+  const [raceProgress, setRaceProgress] = useState(0)
   const [winnerCount, setWinnerCount] = useState(1)
 
   const pendingWinnersRef = useRef([])
-  const spinIntervalRef = useRef(null)
-  const spinTimeoutRef = useRef(null)
-  const spinProgressRef = useRef(null)
-  const spinStartRef = useRef(null)
+  const raceTimeoutRef = useRef(null)
+  const raceProgressRef = useRef(null)
+  const raceStartRef = useRef(null)
   useEffect(() => {
     if (typeof window === 'undefined') {
       return
@@ -207,20 +168,16 @@ function App() {
     }
   }, [])
 
-  const clearSpinTimers = useCallback(() => {
-    if (spinIntervalRef.current) {
-      clearInterval(spinIntervalRef.current)
-      spinIntervalRef.current = null
+  const clearRaceTimers = useCallback(() => {
+    if (raceTimeoutRef.current) {
+      clearTimeout(raceTimeoutRef.current)
+      raceTimeoutRef.current = null
     }
-    if (spinTimeoutRef.current) {
-      clearTimeout(spinTimeoutRef.current)
-      spinTimeoutRef.current = null
+    if (raceProgressRef.current) {
+      cancelAnimationFrame(raceProgressRef.current)
+      raceProgressRef.current = null
     }
-    if (spinProgressRef.current) {
-      cancelAnimationFrame(spinProgressRef.current)
-      spinProgressRef.current = null
-    }
-    spinStartRef.current = null
+    raceStartRef.current = null
   }, [])
 
   const fetchServerState = useCallback(async () => {
@@ -248,23 +205,22 @@ function App() {
     }
   }, [])
 
-  const finalizeSpin = useCallback(async () => {
-    clearSpinTimers()
-    setIsSpinning(false)
-    setSpinProgress(1)
+  const finalizeRace = useCallback(async () => {
+    clearRaceTimers()
+    setIsRacing(false)
+    setRaceProgress(1)
     if (pendingWinnersRef.current?.length) {
       setWinners(pendingWinnersRef.current)
     }
-    setRouletteName('')
     pendingWinnersRef.current = []
     await fetchServerState()
-  }, [clearSpinTimers, fetchServerState])
+  }, [clearRaceTimers, fetchServerState])
 
   useEffect(() => {
     return () => {
-      clearSpinTimers()
+      clearRaceTimers()
     }
-  }, [clearSpinTimers])
+  }, [clearRaceTimers])
 
   useEffect(() => {
     fetchServerState()
@@ -343,7 +299,7 @@ function App() {
   }
 
   const handleDraw = async () => {
-    if (isSpinning) {
+    if (isRacing) {
       return
     }
 
@@ -360,7 +316,7 @@ function App() {
 
     setServerError('')
     pendingWinnersRef.current = []
-    startRouletteAnimation()
+    startRaceAnimation()
 
     try {
       const response = await fetch(`${API_BASE_URL}/draw`, {
@@ -381,19 +337,17 @@ function App() {
           : []
       pendingWinnersRef.current = newWinners
     } catch {
-      clearSpinTimers()
-      setIsSpinning(false)
-      setSpinProgress(0)
-      setRouletteName('')
+      clearRaceTimers()
+      setIsRacing(false)
+      setRaceProgress(0)
       setServerError('Nao foi possivel realizar o sorteio.')
     }
   }
 
   const handleReset = async () => {
-    clearSpinTimers()
-    setIsSpinning(false)
-    setRouletteName('')
-    setSpinProgress(0)
+    clearRaceTimers()
+    setIsRacing(false)
+    setRaceProgress(0)
     pendingWinnersRef.current = []
     try {
       const response = await fetch(`${API_BASE_URL}/winner/reset`, {
@@ -418,41 +372,32 @@ function App() {
   const canDraw =
     participants.length >= Math.max(2, winnerCount) && winnerCount >= 1
 
-  const startRouletteAnimation = useCallback(() => {
+  const startRaceAnimation = useCallback(() => {
     if (!participants.length) {
       return
     }
 
-    spinStartRef.current = Date.now()
-    setIsSpinning(true)
-    setSpinProgress(0)
-    setRouletteName(
-      participants[Math.floor(Math.random() * participants.length)],
-    )
-
-    spinIntervalRef.current = window.setInterval(() => {
-      setRouletteName(
-        participants[Math.floor(Math.random() * participants.length)],
-      )
-    }, 140)
+    raceStartRef.current = Date.now()
+    setIsRacing(true)
+    setRaceProgress(0)
 
     const step = () => {
-      if (!spinStartRef.current) {
+      if (!raceStartRef.current) {
         return
       }
-      const elapsed = Date.now() - spinStartRef.current
+      const elapsed = Date.now() - raceStartRef.current
       const progress = Math.min(elapsed / SPIN_DURATION, 1)
-      setSpinProgress(progress)
+      setRaceProgress(progress)
       if (progress < 1) {
-        spinProgressRef.current = requestAnimationFrame(step)
+        raceProgressRef.current = requestAnimationFrame(step)
       }
     }
 
-    spinProgressRef.current = requestAnimationFrame(step)
-    spinTimeoutRef.current = window.setTimeout(() => {
-      finalizeSpin()
+    raceProgressRef.current = requestAnimationFrame(step)
+    raceTimeoutRef.current = window.setTimeout(() => {
+      finalizeRace()
     }, SPIN_DURATION)
-  }, [participants, finalizeSpin])
+  }, [participants, finalizeRace])
 
   const closeAdminPrompt = () => {
     setShowAdminPrompt(false)
@@ -567,7 +512,7 @@ function App() {
                 onChange={(event) =>
                   setWinnerCount(Math.max(1, Number(event.target.value)))
                 }
-                disabled={isSpinning}
+                disabled={isRacing}
               >
                 {Array.from({ length: MAX_WINNERS }).map((_, index) => {
                   const value = index + 1
@@ -588,14 +533,14 @@ function App() {
               <button
                 className="primary"
                 onClick={handleDraw}
-                disabled={!canDraw || isSpinning}
+                disabled={!canDraw || isRacing}
               >
                 Sortear participante
               </button>
               <button
                 className="ghost"
                 onClick={handleReset}
-                disabled={!winners.length || isSpinning}
+                disabled={!winners.length || isRacing}
               >
                 Limpar resultado
               </button>
@@ -604,22 +549,22 @@ function App() {
                   Sao necessarios pelo menos 2 participantes para o sorteio.
                 </span>
               )}
-              {isSpinning && (
-                <span className="hint">A roleta finaliza em 10 segundos.</span>
+              {isRacing && (
+                <span className="hint">A corrida termina em 10 segundos.</span>
               )}
             </div>
 
-            <RouletteStatus
-              isSpinning={isSpinning}
-              rouletteName={rouletteName}
-              spinProgress={spinProgress}
-              winner={primaryWinner}
+            <RaceStatus
+              isRacing={isRacing}
+              winners={winners}
+              raceProgress={raceProgress}
             />
 
-            <AnimatedWheel
-              items={sortedParticipants}
-              isSpinning={isSpinning}
+            <RacingTrack
+              racers={sortedParticipants}
+              isRacing={isRacing}
               winners={winners}
+              raceProgress={raceProgress}
             />
             <WinnersPodium winners={winners} />
           </section>
@@ -648,21 +593,21 @@ function App() {
                 <strong>{participants.length}</strong>
               </div>
             </div>
-            <RouletteStatus
+            <RaceStatus
               accent
-              isSpinning={isSpinning}
-              rouletteName={rouletteName}
-              spinProgress={spinProgress}
-              winner={primaryWinner}
-            />
-            <AnimatedWheel
-              items={sortedParticipants}
-              isSpinning={isSpinning}
+              isRacing={isRacing}
               winners={winners}
+              raceProgress={raceProgress}
+            />
+            <RacingTrack
+              racers={sortedParticipants}
+              isRacing={isRacing}
+              winners={winners}
+              raceProgress={raceProgress}
             />
             <p className="hint">
-              Sempre que o administrador clicar em sortear, a roleta gira por 10
-              segundos antes de revelar o vencedor final.
+              Sempre que o administrador clicar em sortear, uma corrida de 10
+              segundos acontece e define o pódio automaticamente.
             </p>
             <WinnersPodium winners={winners} />
           </section>
