@@ -242,6 +242,25 @@ function App() {
     return () => clearInterval(interval)
   }, [fetchServerState])
 
+  const sortedParticipants = useMemo(() => {
+    return [...participants].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [participants])
+
+  const normalizedMyName = normalizeName(myName || '')
+  const currentAdminDefinition = useMemo(
+    () => findAdminByName(normalizedMyName),
+    [normalizedMyName],
+  )
+  const isAdminName = Boolean(currentAdminDefinition)
+  const isAdminSpectator =
+    currentAdminDefinition && !currentAdminDefinition.participates
+  const isAdmin =
+    activeTab === TABS.admin &&
+    isAdminAuthorized &&
+    currentAdminDefinition &&
+    authorizedAdminName === currentAdminDefinition.name
+  const primaryWinner = winners[0] || ''
+
   useEffect(() => {
     if (!currentAdminDefinition) {
       setIsAdminAuthorized(false)
@@ -262,25 +281,6 @@ function App() {
       setActiveTab(TABS.user)
     }
   }, [isAdminAuthorized, activeTab])
-
-  const sortedParticipants = useMemo(() => {
-    return [...participants].sort((a, b) => a.localeCompare(b, 'pt-BR'))
-  }, [participants])
-
-  const normalizedMyName = normalizeName(myName || '')
-  const currentAdminDefinition = useMemo(
-    () => findAdminByName(normalizedMyName),
-    [normalizedMyName],
-  )
-  const isAdminName = Boolean(currentAdminDefinition)
-  const isAdminSpectator =
-    currentAdminDefinition && !currentAdminDefinition.participates
-  const isAdmin =
-    activeTab === TABS.admin &&
-    isAdminAuthorized &&
-    currentAdminDefinition &&
-    authorizedAdminName === currentAdminDefinition.name
-  const primaryWinner = winners[0] || ''
 
   const isRegistered = useMemo(() => {
     if (!myName) {
