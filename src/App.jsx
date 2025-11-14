@@ -52,6 +52,9 @@ const ParticipantsSection = ({
   </section>
 )
 
+const RACE_START = 0.04
+const RACE_PRE_FINISH = 0.9
+
 const RaceStatus = ({ isRacing, winners, raceProgress, accent = false }) => {
   const classes = ['panel__result']
   if (accent) {
@@ -85,19 +88,22 @@ const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
   }
 
   const winnerLookup = winners.map((name) => name.toLowerCase())
-  const total = racers.length
+  const hasResults = winners.length > 0
 
   return (
     <div className="track" role="list">
       {racers.map((name, index) => {
         const normalized = name.toLowerCase()
-        const base = index / total
         const isWinner = winnerLookup.includes(normalized)
-        const progress = isRacing
-          ? Math.min(base + raceProgress * (1 - base), 1)
-          : isWinner
-            ? 1
-            : base * 0.2
+
+        let position = RACE_START
+        if (isRacing) {
+          position =
+            RACE_START +
+            raceProgress * (RACE_PRE_FINISH - RACE_START)
+        } else if (hasResults) {
+          position = isWinner ? 1 : RACE_PRE_FINISH
+        }
 
         return (
           <div className="track__lane" key={`${name}-${index}`} role="listitem">
@@ -105,7 +111,7 @@ const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
             <div className="track__road">
               <div
                 className={`track__car ${isWinner ? 'track__car--winner' : ''}`}
-                style={{ left: `${progress * 100}%` }}
+                style={{ left: `${position * 100}%` }}
               >
                 <span role="img" aria-label="carro de corrida">
                   🏎️
