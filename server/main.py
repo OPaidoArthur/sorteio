@@ -28,6 +28,10 @@ class DrawPayload(BaseModel):
     count: int = 1
 
 
+class PurgePayload(BaseModel):
+    admin_name: str
+
+
 @app.get("/participants")
 def list_participants():
     return {"participants": participants, "winners": winners}
@@ -102,5 +106,18 @@ def delete_participant(name: str):
     participants.extend(remaining)
 
     winners = [w for w in winners if w.lower() != normalized]
+
+    return {"participants": participants, "winners": winners}
+
+
+@app.post("/participants/purge")
+def purge_participants(payload: PurgePayload):
+    admin_name = payload.admin_name.strip().lower()
+    if not admin_name:
+        raise HTTPException(status_code=400, detail="Administrador invalido.")
+
+    global participants, winners
+    participants = [p for p in participants if p.lower() == admin_name]
+    winners = [w for w in winners if w.lower() == admin_name]
 
     return {"participants": participants, "winners": winners}

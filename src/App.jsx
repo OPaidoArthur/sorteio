@@ -434,6 +434,39 @@ function App() {
     }
   }
 
+  const handleClearNonAdmins = async () => {
+    if (!isAdmin) {
+      return
+    }
+
+    const confirmation = window.confirm(
+      'Deseja remover todos os participantes exceto o administrador?',
+    )
+    if (!confirmation) {
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/participants/purge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ admin_name: ADMIN_RULES.name }),
+      })
+      if (!response.ok) {
+        throw new Error('Failed to purge participants')
+      }
+      const data = await response.json()
+      setParticipants(
+        Array.isArray(data.participants) ? data.participants : [],
+      )
+      setWinners(Array.isArray(data.winners) ? data.winners : [])
+    } catch {
+      setServerError('Nao foi possivel remover os participantes.')
+    }
+  }
+
   const closeAdminPrompt = () => {
     setShowAdminPrompt(false)
     setAdminPassword('')
@@ -577,6 +610,13 @@ function App() {
                 disabled={!winners.length || isRacing}
               >
                 Limpar resultado
+              </button>
+              <button
+                className="ghost ghost--danger"
+                onClick={handleClearNonAdmins}
+                disabled={!participants.length || isRacing}
+              >
+                Remover todos (exceto admin)
               </button>
               {!canDraw && (
                 <span className="hint">
