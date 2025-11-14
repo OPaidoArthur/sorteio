@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import digitalHubLogo from './assets/digital-hub-logo.gif'
+
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const SPIN_DURATION = 10000
 
 const STORAGE_KEYS = {
   participants: 'sorteio:participants',
@@ -18,23 +21,6 @@ const ADMIN_RULES = {
 }
 
 const ADMIN_NAME_NORMALIZED = ADMIN_RULES.name.toLowerCase()
-
-const loadParticipants = () => {
-  if (typeof window === 'undefined') {
-    return []
-  }
-
-  try {
-    const stored = localStorage.getItem(STORAGE_KEYS.participants)
-    if (!stored) {
-      return []
-    }
-    const parsed = JSON.parse(stored)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
 
 const ParticipantsSection = ({
   items,
@@ -64,8 +50,47 @@ const ParticipantsSection = ({
   </section>
 )
 
+const RouletteStatus = ({
+  isSpinning,
+  rouletteName,
+  spinProgress,
+  winner,
+  accent = false,
+}) => {
+  const classes = ['panel__result']
+  if (accent) {
+    classes.push('panel__result--accent')
+  }
+  if (isSpinning) {
+    classes.push('panel__result--spinning')
+  }
+
+  return (
+    <div className={classes.join(' ')}>
+      <p>{isSpinning ? 'Roleta em andamento (10s)' : 'Resultado atual'}</p>
+      <strong>
+        {isSpinning
+          ? rouletteName || 'Embaralhando nomes...'
+          : winner || 'Nenhum sorteio realizado'}
+      </strong>
+      {isSpinning && (
+        <div className="roulette">
+          <div className="roulette__track">
+            <div
+              className="roulette__indicator"
+              style={{ width: `${Math.min(spinProgress * 100, 100)}%` }}
+            />
+          </div>
+          <span>{Math.round(spinProgress * 100)}%</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function App() {
   const [participants, setParticipants] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
   const [nameInput, setNameInput] = useState('')
   const [myName, setMyName] = useState('')
   const [winner, setWinner] = useState('')
@@ -76,58 +101,87 @@ function App() {
   const [showAdminPrompt, setShowAdminPrompt] = useState(false)
   const [adminPassword, setAdminPassword] = useState('')
   const [adminError, setAdminError] = useState('')
+  const [serverError, setServerError] = useState('')
+  const [isSpinning, setIsSpinning] = useState(false)
+  const [rouletteName, setRouletteName] = useState('')
+  const [spinProgress, setSpinProgress] = useState(0)
 
+  const pendingWinnerRef = useRef('')
+  const spinIntervalRef = useRef(null)
+  const spinTimeoutRef = useRef(null)
+  const spinProgressRef = useRef(null)
+  const spinStartRef = useRef(null)
   useEffect(() => {
-    const storedParticipants = loadParticipants()
-    setParticipants(storedParticipants)
-
-    if (typeof window !== 'undefined') {
-      const storedName = localStorage.getItem(STORAGE_KEYS.myName)
-      if (storedName) {
-        setMyName(storedName)
-        setNameInput(storedName)
-      }
+    if (typeof window === 'undefined') {
+      return
     }
-    setHasHydrated(true)
+
+    const storedName = localStorage.getItem(STORAGE_KEYS.myName)
+    if (storedName) {
+      setMyName(storedName)
+      setNameInput(storedName)
+    }
   }, [])
 
-  useEffect(() => {
-    if (!hasHydrated || typeof window === 'undefined') {
-      return
+  const clearSpinTimers = useCallback(() => {
+    if (spinIntervalRef.current) {
+      clearInterval(spinIntervalRef.current)
+      spinIntervalRef.current = null
     }
-
-    localStorage.setItem(
-      STORAGE_KEYS.participants,
-      JSON.stringify(participants),
-    )
-  }, [participants, hasHydrated])
-
-  useEffect(() => {
-    if (!hasHydrated || typeof window === 'undefined') {
-      return
+    if (spinTimeoutRef.current) {
+      clearTimeout(spinTimeoutRef.current)
+      spinTimeoutRef.current = null
     }
+    if (spinProgressRef.current) {
+      cancelAnimationFrame(spinProgressRef.current)
+      spinProgressRef.current = null
+    }
+    spinStartRef.current = null
+  }, [])
 
-    const handleStorage = (event) => {
-      if (event.key === STORAGE_KEYS.participants) {
-        if (!event.newValue) {
-          setParticipants([])
-          return
-        }
-
-        try {
-          const parsed = JSON.parse(event.newValue)
-          if (Array.isArray(parsed)) {
-            setParticipants(parsed)
-          }
-        } catch {
-          // ignore malformed payloads
-        }
+  const fetchServerState = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/participants`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch participants')
       }
+      const data = await response.json()
+      setParticipants(
+        Array.isArray(data.participants) ? data.participants : [],
+      )
+      setWinner(data.winner || '')
+      setServerError('')
+    } catch (err) {
+      setServerError('Falha ao sincronizar com o servidor. Tente novamente.')
+    } finally {
+      setIsLoading(false)
+      setHasHydrated(true)
     }
+  }, [])
 
-    window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
-  }, [hasHydrated])
+  const finalizeSpin = useCallback(async () => {
+    clearSpinTimers()
+    setIsSpinning(false)
+    setSpinProgress(1)
+    if (pendingWinnerRef.current) {
+      setWinner(pendingWinnerRef.current)
+    }
+    setRouletteName('')
+    pendingWinnerRef.current = ''
+    await fetchServerState()
+  }, [clearSpinTimers, fetchServerState])
+
+  useEffect(() => {
+    return () => {
+      clearSpinTimers()
+    }
+  }, [clearSpinTimers])
+
+  useEffect(() => {
+    fetchServerState()
+    const interval = setInterval(fetchServerState, 5000)
+    return () => clearInterval(interval)
+  }, [fetchServerState])
 
   useEffect(() => {
     const normalized = (myName || '').trim().toLowerCase()
@@ -160,7 +214,7 @@ function App() {
     )
   }, [participants, myName])
 
-  const handleRegistration = (event) => {
+  const handleRegistration = async (event) => {
     event.preventDefault()
     const normalized = nameInput.trim()
 
@@ -169,39 +223,119 @@ function App() {
       return
     }
 
-    setError('')
-    setMyName(normalized)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEYS.myName, normalized)
-    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/participants`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: normalized }),
+      })
 
-    setParticipants((current) => {
-      const exists = current.some(
-        (name) => name.toLowerCase() === normalized.toLowerCase(),
-      )
-
-      if (exists) {
-        return current
+      if (!response.ok) {
+        throw new Error('Failed to register participant')
       }
 
-      return [...current, normalized]
-    })
+      const data = await response.json()
+      setParticipants(
+        Array.isArray(data.participants) ? data.participants : [],
+      )
+      setError('')
+      setMyName(normalized)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEYS.myName, normalized)
+      }
+
+      await fetchServerState()
+    } catch (err) {
+      setError('Nao foi possivel cadastrar agora. Tente novamente.')
+    }
   }
 
-  const handleDraw = () => {
+  const handleDraw = async () => {
+    if (!canDraw || isSpinning) {
+      return
+    }
+
+    setServerError('')
+    pendingWinnerRef.current = ''
+    startRouletteAnimation()
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/draw`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        throw new Error('Failed to draw')
+      }
+      const data = await response.json()
+      pendingWinnerRef.current = data.winner || ''
+    } catch {
+      clearSpinTimers()
+      setIsSpinning(false)
+      setSpinProgress(0)
+      setRouletteName('')
+      setServerError('Nao foi possivel realizar o sorteio.')
+    }
+  }
+
+  const handleReset = async () => {
+    clearSpinTimers()
+    setIsSpinning(false)
+    setRouletteName('')
+    setSpinProgress(0)
+    try {
+      const response = await fetch(`${API_BASE_URL}/winner/reset`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        throw new Error('Failed to reset winner')
+      }
+      const data = await response.json()
+      setWinner(data.winner || '')
+      await fetchServerState()
+    } catch {
+      setServerError('Nao foi possivel limpar o resultado.')
+    }
+  }
+
+  const canDraw = participants.length > 1
+
+  const startRouletteAnimation = useCallback(() => {
     if (!participants.length) {
       return
     }
 
-    const index = Math.floor(Math.random() * participants.length)
-    setWinner(participants[index])
-  }
+    spinStartRef.current = Date.now()
+    setIsSpinning(true)
+    setSpinProgress(0)
+    setRouletteName(
+      participants[Math.floor(Math.random() * participants.length)],
+    )
 
-  const handleReset = () => {
-    setWinner('')
-  }
+    spinIntervalRef.current = window.setInterval(() => {
+      setRouletteName(
+        participants[Math.floor(Math.random() * participants.length)],
+      )
+    }, 140)
 
-  const canDraw = participants.length > 1
+    const step = () => {
+      if (!spinStartRef.current) {
+        return
+      }
+      const elapsed = Date.now() - spinStartRef.current
+      const progress = Math.min(elapsed / SPIN_DURATION, 1)
+      setSpinProgress(progress)
+      if (progress < 1) {
+        spinProgressRef.current = requestAnimationFrame(step)
+      }
+    }
+
+    spinProgressRef.current = requestAnimationFrame(step)
+    spinTimeoutRef.current = window.setTimeout(() => {
+      finalizeSpin()
+    }, SPIN_DURATION)
+  }, [participants, finalizeSpin])
 
   const closeAdminPrompt = () => {
     setShowAdminPrompt(false)
@@ -245,7 +379,7 @@ function App() {
         <div className="hero__brand">
           <img src={digitalHubLogo} alt="Logo animado da Digital Hub" />
           <div>
-            <span>Um produto Digital Hub P&C</span>
+            <span>Responsavel pelo site</span>
             <strong>Digital Hub</strong>
           </div>
         </div>
@@ -255,8 +389,8 @@ function App() {
         </div>
         <p>
           Cadastre-se para participar e utilize as abas abaixo para alternar entre
-          a visao do participante e o painel do administrador. Toda a experiência
-          é operada pela equipe Digital Hub.
+          a visao do participante e o painel do administrador. Toda a experiencia
+          e operada pela equipe Digital Hub.
         </p>
       </header>
 
@@ -281,7 +415,20 @@ function App() {
         </button>
       </nav>
 
-      {isAdmin ? (
+      {serverError && (
+        <div className="alert alert--error" role="alert">
+          <span>{serverError}</span>
+          <button type="button" className="ghost ghost--small" onClick={fetchServerState}>
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      {isLoading ? (
+        <section className="panel loading-panel" aria-live="polite">
+          <p>Carregando informacoes do sorteio...</p>
+        </section>
+      ) : isAdmin ? (
         <>
           <section className="panel admin-panel" aria-label="Painel do administrador">
             <div className="admin-panel__summary">
@@ -299,11 +446,15 @@ function App() {
               <button
                 className="primary"
                 onClick={handleDraw}
-                disabled={!canDraw}
+                disabled={!canDraw || isSpinning}
               >
                 Sortear participante
               </button>
-              <button className="ghost" onClick={handleReset} disabled={!winner}>
+              <button
+                className="ghost"
+                onClick={handleReset}
+                disabled={!winner || isSpinning}
+              >
                 Limpar resultado
               </button>
               {!canDraw && (
@@ -311,18 +462,23 @@ function App() {
                   Sao necessarios pelo menos 2 participantes para o sorteio.
                 </span>
               )}
+              {isSpinning && (
+                <span className="hint">A roleta finaliza em 10 segundos.</span>
+              )}
             </div>
 
-            <div className="panel__result">
-              <p>Resultado atual</p>
-              <strong>{winner || 'Nenhum sorteio realizado'}</strong>
-            </div>
+            <RouletteStatus
+              isSpinning={isSpinning}
+              rouletteName={rouletteName}
+              spinProgress={spinProgress}
+              winner={winner}
+            />
           </section>
 
           <ParticipantsSection
             items={sortedParticipants}
             title="Lista de nomes"
-            subtitle="Visualize quem entrou a partir deste dispositivo."
+            subtitle="Visualize todos os participantes armazenados no servidor."
             emptyMessage="Nenhum participante cadastrado ate agora."
           />
         </>
@@ -343,16 +499,23 @@ function App() {
                 <strong>{participants.length}</strong>
               </div>
             </div>
-            <div className="panel__result panel__result--accent">
-              <p>Ultimo sorteado</p>
-              <strong>{winner || 'Ainda nao houve sorteio'}</strong>
-            </div>
+            <RouletteStatus
+              accent
+              isSpinning={isSpinning}
+              rouletteName={rouletteName}
+              spinProgress={spinProgress}
+              winner={winner}
+            />
+            <p className="hint">
+              Sempre que o administrador clicar em sortear, a roleta gira por 10
+              segundos antes de revelar o vencedor final.
+            </p>
           </section>
 
           <ParticipantsSection
             items={sortedParticipants}
             title="Participantes conectados"
-            subtitle="Essa lista contem apenas os nomes salvos em cache neste navegador."
+            subtitle="Esta lista mostra quem se cadastrou na plataforma compartilhada."
             emptyMessage="Nenhum participante cadastrado ate agora."
           />
         </>
@@ -420,3 +583,7 @@ function App() {
 }
 
 export default App
+
+
+
+
