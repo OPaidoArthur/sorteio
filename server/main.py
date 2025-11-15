@@ -1,5 +1,6 @@
 import random
-from typing import List
+import time
+from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +23,7 @@ class ParticipantPayload(BaseModel):
 
 participants: List[str] = []
 winners: List[str] = []
+race_started_at: Optional[int] = None
 
 
 class DrawPayload(BaseModel):
@@ -34,7 +36,11 @@ class PurgePayload(BaseModel):
 
 @app.get("/participants")
 def list_participants():
-    return {"participants": participants, "winners": winners}
+    return {
+        "participants": participants,
+        "winners": winners,
+        "raceStartAt": race_started_at,
+    }
 
 
 @app.post("/participants", status_code=201)
@@ -49,7 +55,11 @@ def add_participant(payload: ParticipantPayload):
             return {"participants": participants, "winners": winners}
 
     participants.append(name)
-    return {"participants": participants, "winners": winners}
+    return {
+        "participants": participants,
+        "winners": winners,
+        "raceStartAt": race_started_at,
+    }
 
 
 @app.post("/draw")
@@ -67,21 +77,28 @@ def draw_winner(payload: DrawPayload):
             detail="Quantidade de ganhadores maior que o numero de participantes.",
         )
 
-    global winners
+    global winners, race_started_at
+    race_started_at = int(time.time() * 1000)
     winners = random.sample(participants, count)
-    return {"winners": winners}
+    return {"winners": winners, "raceStartAt": race_started_at}
 
 
 @app.post("/winner/reset")
 def reset_winner():
-    global winners
+    global winners, race_started_at
     winners = []
-    return {"winners": winners}
+    race_started_at = None
+    return {"winners": winners, "raceStartAt": race_started_at}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "totalParticipants": len(participants), "winners": winners}
+    return {
+        "status": "ok",
+        "totalParticipants": len(participants),
+        "winners": winners,
+        "raceStartAt": race_started_at,
+    }
 
 
 @app.delete("/participants/{name}")
@@ -107,7 +124,11 @@ def delete_participant(name: str):
 
     winners = [w for w in winners if w.lower() != normalized]
 
-    return {"participants": participants, "winners": winners}
+    return {
+        "participants": participants,
+        "winners": winners,
+        "raceStartAt": race_started_at,
+    }
 
 
 @app.post("/participants/purge")
@@ -116,8 +137,13 @@ def purge_participants(payload: PurgePayload):
     if not admin_name:
         raise HTTPException(status_code=400, detail="Administrador invalido.")
 
-    global participants, winners
+    global participants, winners, race_started_at
     participants = [p for p in participants if p.lower() == admin_name]
     winners = [w for w in winners if w.lower() == admin_name]
+    race_started_at = None
 
-    return {"participants": participants, "winners": winners}
+    return {
+        "participants": participants,
+        "winners": winners,
+        "raceStartAt": race_started_at,
+    }

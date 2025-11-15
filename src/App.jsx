@@ -64,14 +64,7 @@ const ParticipantsSection = ({
 const RACE_START = 0.04
 const RACE_PRE_FINISH = 0.9
 
-const RaceStatus = ({
-  isRacing,
-  winners,
-  raceProgress,
-  accent = false,
-  showCountdown = false,
-  countdownValue = 0,
-}) => {
+const RaceStatus = ({ isRacing, winners, raceProgress, accent = false }) => {
   const classes = ['panel__result']
   if (accent) {
     classes.push('panel__result--accent')
@@ -90,7 +83,7 @@ const RaceStatus = ({
     <div className={classes.join(' ')}>
       <p>{isRacing ? 'Semáforo de largada' : statusText}</p>
       {isRacing ? (
-        <StartingLights progress={raceProgress} countdownValue={countdownValue} />
+        <StartingLights progress={raceProgress} />
       ) : (
         <strong>{winners.join(', ') || 'Aguardando corrida'}</strong>
       )}
@@ -98,13 +91,7 @@ const RaceStatus = ({
   )
 }
 
-const RacingTrack = ({
-  racers,
-  winners,
-  isRacing,
-  raceProgress,
-  countdownValue,
-}) => {
+const RacingTrack = ({ racers, winners, isRacing, raceProgress }) => {
   if (!racers.length) {
     return <div className="track track--empty">Cadastre participantes</div>
   }
@@ -112,8 +99,8 @@ const RacingTrack = ({
   const winnerLookup = winners.map((name) => name.toLowerCase())
   const hasResults = winners.length > 0
 
-  const effectiveProgress =
-    countdownValue > 0 ? Math.min(raceProgress, countdownValue / SPIN_DURATION) : raceProgress
+  const movementThreshold = 0.85
+  const movementRange = 1 - movementThreshold
 
   return (
     <div className="track" role="list" aria-live="polite">
@@ -123,9 +110,15 @@ const RacingTrack = ({
 
         let position = RACE_START
         if (isRacing) {
+          const movementProgress =
+            raceProgress <= movementThreshold
+              ? 0
+              : Math.min(
+                  (raceProgress - movementThreshold) / movementRange,
+                  1,
+                )
           position =
-            RACE_START +
-            effectiveProgress * (RACE_PRE_FINISH - RACE_START)
+            RACE_START + movementProgress * (RACE_PRE_FINISH - RACE_START)
         } else if (hasResults) {
           position = isWinner ? 1 : RACE_PRE_FINISH
         }
@@ -149,9 +142,8 @@ const RacingTrack = ({
   )
 }
 
-const StartingLights = ({ progress, countdownValue = 0 }) => {
-  const progressValue =
-    countdownValue > 0 ? countdownValue / SPIN_DURATION : progress
+const StartingLights = ({ progress }) => {
+  const progressValue = progress
   const phases = [
     { color: 'red', threshold: 0.33 },
     { color: 'yellow', threshold: 0.66 },
@@ -204,15 +196,12 @@ function App() {
   const [adminError, setAdminError] = useState('')
   const [serverError, setServerError] = useState('')
   const [isRacing, setIsRacing] = useState(false)
-  const [countdownValue, setCountdownValue] = useState(0)
   const [raceProgress, setRaceProgress] = useState(0)
+  const [raceStartAt, setRaceStartAt] = useState(null)
   const [winnerCount, setWinnerCount] = useState(1)
   const [authorizedAdminName, setAuthorizedAdminName] = useState('')
 
-  const pendingWinnersRef = useRef([])
-  const raceTimeoutRef = useRef(null)
-  const raceProgressRef = useRef(null)
-  const raceStartRef = useRef(null)
+  const raceAnimationRef = useRef(null)
   useEffect(() => {
     if (typeof window === 'undefined') {
       return
@@ -223,18 +212,6 @@ function App() {
       setMyName(storedName)
       setNameInput(storedName)
     }
-  }, [])
-
-  const clearRaceTimers = useCallback(() => {
-    if (raceTimeoutRef.current) {
-      clearTimeout(raceTimeoutRef.current)
-      raceTimeoutRef.current = null
-    }
-    if (raceProgressRef.current) {
-      cancelAnimationFrame(raceProgressRef.current)
-      raceProgressRef.current = null
-    }
-    raceStartRef.current = null
   }, [])
 
   const fetchServerState = useCallback(async () => {
@@ -253,6 +230,9 @@ function App() {
           ? [data.winner]
           : []
       setWinners(serverWinners)
+      setRaceStartAt(
+        typeof data.raceStartAt === 'number' ? data.raceStartAt : null,
+      )
       setServerError('')
     } catch (err) {
       setServerError('Falha ao sincronizar com o servidor. Tente novamente.')
@@ -262,29 +242,48 @@ function App() {
     }
   }, [])
 
-  const finalizeRace = useCallback(async () => {
-    clearRaceTimers()
-    setIsRacing(false)
-    setRaceProgress(1)
-    setCountdownValue(SPIN_DURATION)
-    if (pendingWinnersRef.current?.length) {
-      setWinners(pendingWinnersRef.current)
-    }
-    pendingWinnersRef.current = []
-    await fetchServerState()
-  }, [clearRaceTimers, fetchServerState])
-
-  useEffect(() => {
-    return () => {
-      clearRaceTimers()
-    }
-  }, [clearRaceTimers])
-
   useEffect(() => {
     fetchServerState()
     const interval = setInterval(fetchServerState, 5000)
     return () => clearInterval(interval)
   }, [fetchServerState])
+
+  useEffect(() => {
+    if (!raceStartAt) {
+      if (raceAnimationRef.current) {
+        cancelAnimationFrame(raceAnimationRef.current)
+        raceAnimationRef.current = null
+      }
+      setIsRacing(false)
+      setRaceProgress(0)
+      return
+    }
+
+    setIsRacing(true)
+    const startTime = Number(raceStartAt)
+
+    const tick = () => {
+      const elapsed = Date.now() - startTime
+      const progress = Math.min(elapsed / SPIN_DURATION, 1)
+      setRaceProgress(progress)
+
+      if (progress < 1) {
+        raceAnimationRef.current = requestAnimationFrame(tick)
+      } else {
+        setIsRacing(false)
+        raceAnimationRef.current = null
+      }
+    }
+
+    raceAnimationRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      if (raceAnimationRef.current) {
+        cancelAnimationFrame(raceAnimationRef.current)
+        raceAnimationRef.current = null
+      }
+    }
+  }, [raceStartAt])
 
   const sortedParticipants = useMemo(() => {
     return [...participants].sort((a, b) => a.localeCompare(b, 'pt-BR'))
@@ -413,8 +412,8 @@ function App() {
     }
 
     setServerError('')
-    pendingWinnersRef.current = []
-    startRaceAnimation()
+    const localStart = Date.now()
+    setRaceStartAt(localStart)
 
     try {
       const response = await fetch(`${API_BASE_URL}/draw`, {
@@ -433,20 +432,20 @@ function App() {
         : data.winner
           ? [data.winner]
           : []
-      pendingWinnersRef.current = newWinners
+      setWinners(newWinners)
+      setRaceStartAt(
+        typeof data.raceStartAt === 'number' ? data.raceStartAt : localStart,
+      )
     } catch {
-      clearRaceTimers()
-      setIsRacing(false)
-      setRaceProgress(0)
+      setRaceStartAt(null)
       setServerError('Nao foi possivel realizar o sorteio.')
     }
   }
 
   const handleReset = async () => {
-    clearRaceTimers()
     setIsRacing(false)
     setRaceProgress(0)
-    pendingWinnersRef.current = []
+    setRaceStartAt(null)
     try {
       const response = await fetch(`${API_BASE_URL}/winner/reset`, {
         method: 'POST',
@@ -461,6 +460,9 @@ function App() {
           ? [data.winner]
           : []
       setWinners(serverWinners)
+      setRaceStartAt(
+        typeof data.raceStartAt === 'number' ? data.raceStartAt : null,
+      )
       await fetchServerState()
     } catch {
       setServerError('Nao foi possivel limpar o resultado.')
@@ -469,35 +471,6 @@ function App() {
 
   const canDraw =
     participants.length >= Math.max(2, winnerCount) && winnerCount >= 1
-
-  const startRaceAnimation = useCallback(() => {
-    if (!participants.length) {
-      return
-    }
-
-    raceStartRef.current = Date.now()
-    setIsRacing(true)
-    setCountdownValue(0)
-    setRaceProgress(0)
-
-    const step = () => {
-      if (!raceStartRef.current) {
-        return
-      }
-      const elapsed = Date.now() - raceStartRef.current
-      const progress = Math.min(elapsed / SPIN_DURATION, 1)
-      setCountdownValue(elapsed)
-      setRaceProgress(progress)
-      if (progress < 1) {
-        raceProgressRef.current = requestAnimationFrame(step)
-      }
-    }
-
-    raceProgressRef.current = requestAnimationFrame(step)
-    raceTimeoutRef.current = window.setTimeout(() => {
-      finalizeRace()
-    }, SPIN_DURATION)
-  }, [participants, finalizeRace])
 
   const handleRemoveParticipant = async (name) => {
     if (!isAdmin) {
@@ -520,6 +493,9 @@ function App() {
       )
       const updatedWinners = Array.isArray(data.winners) ? data.winners : []
       setWinners(updatedWinners)
+      if (typeof data.raceStartAt === 'number') {
+        setRaceStartAt(data.raceStartAt)
+      }
     } catch {
       setServerError('Nao foi possivel remover este participante.')
     }
@@ -553,6 +529,9 @@ function App() {
         Array.isArray(data.participants) ? data.participants : [],
       )
       setWinners(Array.isArray(data.winners) ? data.winners : [])
+      setRaceStartAt(
+        typeof data.raceStartAt === 'number' ? data.raceStartAt : null,
+      )
     } catch {
       setServerError('Nao foi possivel remover os participantes.')
     }
@@ -726,7 +705,6 @@ function App() {
               isRacing={isRacing}
               winners={winners}
               raceProgress={raceProgress}
-              countdownValue={countdownValue}
             />
 
             <RacingTrack
@@ -734,7 +712,6 @@ function App() {
               isRacing={isRacing}
               winners={winners}
               raceProgress={raceProgress}
-              countdownValue={countdownValue}
             />
             {!isRacing && <WinnersPodium winners={winners} />}
           </section>
@@ -770,14 +747,12 @@ function App() {
               isRacing={isRacing}
               winners={winners}
               raceProgress={raceProgress}
-              countdownValue={countdownValue}
             />
             <RacingTrack
               racers={sortedParticipants}
               isRacing={isRacing}
               winners={winners}
               raceProgress={raceProgress}
-              countdownValue={countdownValue}
             />
             <p className="hint">
               Sempre que o administrador clicar em sortear, uma corrida de 10
