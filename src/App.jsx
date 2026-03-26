@@ -112,13 +112,15 @@ const getStartSignalState = (
   startSequenceDuration = FALLBACK_START_SEQUENCE_DURATION,
 ) => {
   const safeDuration = Math.max(startSequenceDuration, 1500)
-  const elapsedMs = raceProgress * SPIN_DURATION
+  const normalizedRaceProgress = clamp(raceProgress, 0, 1)
+  const elapsedMs = normalizedRaceProgress * SPIN_DURATION
   const stepDuration = safeDuration / START_SIGNAL_STEPS.length
-  const activeStepIndex = Math.min(
+  const activeStepIndex = clamp(
     Math.floor(elapsedMs / stepDuration),
+    0,
     START_SIGNAL_STEPS.length - 1,
   )
-  const activeStep = START_SIGNAL_STEPS[activeStepIndex]
+  const activeStep = START_SIGNAL_STEPS[activeStepIndex] ?? START_SIGNAL_STEPS[0]
   const normalized = Math.min(elapsedMs / safeDuration, 1)
   const greenStartAt = stepDuration * (START_SIGNAL_STEPS.length - 1)
   const greenStartProgress = Math.min(greenStartAt / SPIN_DURATION, 0.92)
@@ -800,7 +802,7 @@ function App() {
 
     const tick = () => {
       const elapsed = Date.now() - startTime
-      const progress = Math.min(elapsed / SPIN_DURATION, 1)
+      const progress = clamp(elapsed / SPIN_DURATION, 0, 1)
       setRaceProgress(progress)
 
       if (progress < 1) {
