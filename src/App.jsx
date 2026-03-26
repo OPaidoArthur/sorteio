@@ -700,8 +700,16 @@ function App() {
 
   const raceAnimationRef = useRef(null)
   const raceAudioRef = useRef(null)
+  const raceAudioTimeoutRef = useRef(null)
   const playedRaceSoundRef = useRef(null)
   const displayedWinnersRaceRef = useRef(null)
+
+  const clearRaceAudioTimeout = useCallback(() => {
+    if (raceAudioTimeoutRef.current) {
+      clearTimeout(raceAudioTimeoutRef.current)
+      raceAudioTimeoutRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -745,11 +753,12 @@ function App() {
     raceAudioRef.current = audio
 
     return () => {
+      clearRaceAudioTimeout()
       audio.removeEventListener('loadedmetadata', syncAudioDuration)
       audio.pause()
       raceAudioRef.current = null
     }
-  }, [])
+  }, [clearRaceAudioTimeout])
 
   const fetchServerState = useCallback(async () => {
     try {
@@ -791,6 +800,12 @@ function App() {
         cancelAnimationFrame(raceAnimationRef.current)
         raceAnimationRef.current = null
       }
+      clearRaceAudioTimeout()
+      if (raceAudioRef.current) {
+        raceAudioRef.current.pause()
+        raceAudioRef.current.currentTime = 0
+      }
+      playedRaceSoundRef.current = null
       setIsRacing(false)
       setRaceProgress(0)
       displayedWinnersRaceRef.current = null
@@ -825,9 +840,11 @@ function App() {
         raceAnimationRef.current = null
       }
     }
-  }, [raceStartAt])
+  }, [clearRaceAudioTimeout, raceStartAt])
 
   useEffect(() => {
+    clearRaceAudioTimeout()
+
     if (!raceStartAt || !raceAudioRef.current) {
       return
     }
@@ -842,14 +859,45 @@ function App() {
       FALLBACK_START_SEQUENCE_DURATION,
     )
 
+    const playSyncedAudio = () => {
+      const audio = raceAudioRef.current
+      if (!audio) {
+        return
+      }
+
+      const syncedElapsed = Date.now() - raceStartAt
+      if (syncedElapsed > audioSyncWindow) {
+        return
+      }
+
+      const offsetMs = clamp(syncedElapsed, 0, startSequenceDuration)
+      const maxAudioStartTime =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? Math.max(audio.duration - 0.05, 0)
+          : Math.max(startSequenceDuration / 1000 - 0.05, 0)
+
+      audio.pause()
+      audio.currentTime = Math.min(offsetMs / 1000, maxAudioStartTime)
+      playedRaceSoundRef.current = raceStartAt
+      audio.play().catch(() => {})
+    }
+
     if (elapsed > audioSyncWindow) {
       return
     }
 
-    playedRaceSoundRef.current = raceStartAt
-    raceAudioRef.current.currentTime = 0
-    raceAudioRef.current.play().catch(() => {})
-  }, [raceStartAt, startSequenceDuration])
+    const delayUntilStart = raceStartAt - Date.now()
+    if (delayUntilStart > 20) {
+      raceAudioTimeoutRef.current = setTimeout(() => {
+        raceAudioTimeoutRef.current = null
+        playSyncedAudio()
+      }, delayUntilStart)
+      return clearRaceAudioTimeout
+    }
+
+    playSyncedAudio()
+    return clearRaceAudioTimeout
+  }, [clearRaceAudioTimeout, raceStartAt, startSequenceDuration])
 
   const sortedParticipants = useMemo(() => {
     return [...participants].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
