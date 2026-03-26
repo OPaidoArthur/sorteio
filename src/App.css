@@ -514,18 +514,18 @@
 }
 
 .track__road--moving {
-  animation: track-road-scroll 2.4s linear infinite;
+  animation: track-road-scroll 3.4s linear infinite;
 }
 
 .track__car {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  transition: left 0.34s linear, transform 0.34s ease;
+  transition: left 0.46s linear, transform 0.46s ease;
 }
 
 .track__car--moving {
-  animation: track-car-bob 1.08s ease-in-out infinite;
+  animation: track-car-bob 1.36s ease-in-out infinite;
 }
 
 .track__car--winner {

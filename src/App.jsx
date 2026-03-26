@@ -6,7 +6,7 @@ import startBeepAudio from './assets/transcendedlifting-race-start-beeps-125125.
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
-const SPIN_DURATION = 10000
+const SPIN_DURATION = 12000
 const SERVER_SYNC_INTERVAL = 1000
 const FALLBACK_START_SEQUENCE_DURATION = 2400
 const MAX_WINNERS = 5
@@ -94,6 +94,7 @@ const normalizeParticipants = (items) =>
     : []
 
 const clamp = (value, min = 0, max = 1) => Math.min(Math.max(value, min), max)
+const mix = (from, to, progress) => from + (to - from) * progress
 const easeInOutSine = (value) => -(Math.cos(Math.PI * value) - 1) / 2
 const easeOutCubic = (value) => 1 - (1 - value) ** 3
 
@@ -145,35 +146,38 @@ const getRacePosition = ({
   }
 
   const seed = getStableSeed(name)
-  const phase = seed * Math.PI * 2 + index * 0.73
-  const cruisePhaseEnd = 0.86
-  const packFinishLine = 0.82
+  const phase = seed * Math.PI * 2 + index * 0.81
+  const cruisePhaseEnd = 0.82
+  const packFinishLine = 0.84
   const cruiseProgress = clamp(movementProgress / cruisePhaseEnd)
-  const packEasedProgress =
-    cruiseProgress * 0.88 + easeInOutSine(cruiseProgress) * 0.12
-  const packBase = RACE_START + packEasedProgress * (packFinishLine - RACE_START)
-
-  const phaseOne = easeInOutSine(clamp(cruiseProgress / 0.34))
-  const phaseTwo = easeInOutSine(clamp((cruiseProgress - 0.22) / 0.34))
-  const phaseThree = easeInOutSine(clamp((cruiseProgress - 0.5) / 0.3))
-  const sectionShift =
-    Math.sin(phase) * 0.018 * phaseOne +
-    Math.cos(phase * 1.13) * 0.016 * phaseTwo +
-    Math.sin(phase * 1.37) * 0.014 * phaseThree
+  const cruiseBase = cruiseProgress * 0.74 + easeInOutSine(cruiseProgress) * 0.26
+  const packBase = mix(RACE_START, packFinishLine, cruiseBase)
+  const overtakeWindow = Math.sin(Math.PI * cruiseProgress) ** 1.15
+  const waveOne = Math.sin(cruiseProgress * Math.PI * 3.6 + phase) * 0.024
+  const waveTwo = Math.cos(cruiseProgress * Math.PI * 5.2 + phase * 1.17) * 0.016
+  const waveThree = Math.sin(cruiseProgress * Math.PI * 7.1 + phase * 0.73) * 0.009
+  const rivalBias = (seed - 0.5) * 0.014 * cruiseProgress
+  const winnerBias =
+    winnerRank === 0 ? 0.006 * cruiseProgress : winnerRank > 0 ? 0.003 * cruiseProgress : 0
 
   const packPosition = clamp(
-    packBase + sectionShift + (seed - 0.5) * 0.01 * cruiseProgress,
+    packBase +
+      (waveOne + waveTwo + waveThree) * overtakeWindow +
+      rivalBias +
+      winnerBias,
     RACE_START,
     packFinishLine + 0.03,
   )
 
-  const finalStretchProgress = clamp((movementProgress - cruisePhaseEnd) / 0.14)
+  const finalStretchProgress = clamp(
+    (movementProgress - cruisePhaseEnd) / (1 - cruisePhaseEnd),
+  )
   const sprintDelay =
     winnerRank === 0
       ? 0
       : winnerRank > 0
-        ? clamp(0.04 + winnerRank * 0.07, 0, 0.38)
-        : 0.22 + seed * 0.12
+        ? clamp(0.06 + winnerRank * 0.06, 0, 0.42)
+        : 0.22 + seed * 0.14
   const orderedSprintProgress =
     winnerRank === 0
       ? finalStretchProgress
@@ -182,15 +186,15 @@ const getRacePosition = ({
     winnerRank === 0
       ? 1
       : winnerRank > 0
-        ? clamp(0.988 - winnerRank * 0.015, 0.95, 0.99)
-        : clamp(0.94 + seed * 0.015, 0.94, 0.955)
+        ? clamp(0.985 - winnerRank * 0.018, 0.92, 0.985)
+        : clamp(0.935 + seed * 0.02, 0.935, 0.955)
 
   const sprintEase =
     winnerRank === 0
       ? easeOutCubic(orderedSprintProgress)
-      : easeInOutSine(orderedSprintProgress)
+      : orderedSprintProgress * 0.45 + easeInOutSine(orderedSprintProgress) * 0.55
 
-  const position = packPosition * (1 - sprintEase) + finalTarget * sprintEase
+  const position = mix(packPosition, finalTarget, sprintEase)
 
   return clamp(position, RACE_START, 1)
 }
